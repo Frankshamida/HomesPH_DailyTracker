@@ -1,0 +1,223 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===========================================================================
+   Homes.ph Daily Tracker — Design tokens
+   Semantic HSL variables consumed by tailwind.config.ts. Light + dark themes.
+   =========================================================================== */
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 232 65% 33%;        /* Homes.ph royal blue (brand-900-ish) */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 33 100% 48%;         /* Homes.ph gold */
+    --accent-foreground: 0 0% 100%;
+
+    --success: 152 61% 41%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 222 47% 11%;
+
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 232 83% 58%;
+
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 222 47% 8%;
+    --foreground: 210 40% 96%;
+
+    --card: 222 44% 12%;
+    --card-foreground: 210 40% 96%;
+
+    --popover: 222 44% 12%;
+    --popover-foreground: 210 40% 96%;
+
+    --primary: 231 80% 68%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 217 33% 18%;
+    --secondary-foreground: 210 40% 96%;
+
+    --muted: 217 33% 18%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 33 95% 55%;
+    --accent-foreground: 222 47% 11%;
+
+    --success: 152 55% 48%;
+    --success-foreground: 222 47% 11%;
+
+    --warning: 38 92% 55%;
+    --warning-foreground: 222 47% 11%;
+
+    --info: 199 89% 60%;
+    --info-foreground: 222 47% 11%;
+
+    --destructive: 0 72% 58%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 217 33% 22%;
+    --input: 217 33% 22%;
+    --ring: 231 80% 68%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Subtle scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.35);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ===========================================================================
+   SweetAlert2 — themed to match light/dark design tokens
+   =========================================================================== */
+.swal2-container {
+  backdrop-filter: blur(2px);
+}
+.swal2-container .swal2-backdrop-show,
+.swal2-backdrop-show {
+  background: hsl(222 47% 11% / 0.45) !important;
+}
+.hph-swal.swal2-popup {
+  background: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) + 4px);
+  box-shadow: 0 24px 48px -12px hsl(222 47% 11% / 0.35);
+  padding: 1.75rem;
+}
+.hph-swal-title {
+  color: hsl(var(--foreground)) !important;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.hph-swal-body {
+  color: hsl(var(--muted-foreground)) !important;
+}
+.hph-swal-body b {
+  color: hsl(var(--foreground));
+}
+.hph-swal-body label {
+  color: hsl(var(--foreground)) !important;
+}
+/* inputs / selects / textareas inside dialogs */
+.hph-swal .swal2-input,
+.hph-swal .swal2-textarea,
+.hph-swal .swal2-select {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--input));
+  border-radius: calc(var(--radius) - 2px);
+  box-shadow: none;
+  font-size: 0.9rem;
+}
+.hph-swal .swal2-input::placeholder,
+.hph-swal .swal2-textarea::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+.hph-swal .swal2-input:focus,
+.hph-swal .swal2-textarea:focus,
+.hph-swal .swal2-select:focus {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.35);
+  outline: none;
+}
+/* buttons */
+.hph-swal-actions {
+  gap: 0.5rem;
+}
+.hph-swal-confirm,
+.hph-swal-cancel,
+.hph-swal-deny {
+  border-radius: calc(var(--radius) - 2px);
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.6rem 1.1rem;
+  transition: filter 0.15s ease, background 0.15s ease;
+  box-shadow: none;
+}
+.hph-swal-confirm {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+.hph-swal-confirm:hover {
+  filter: brightness(1.08);
+}
+.hph-swal-cancel {
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+  border: 1px solid hsl(var(--border));
+}
+.hph-swal-cancel:hover {
+  background: hsl(var(--muted));
+}
+.hph-swal-deny {
+  background: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
+}
+.hph-swal-validation {
+  background: hsl(var(--destructive) / 0.1) !important;
+  color: hsl(var(--destructive)) !important;
+  border-radius: calc(var(--radius) - 2px);
+}
+.hph-swal .swal2-footer {
+  border-top-color: hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+}
+.hph-swal .swal2-timer-progress-bar {
+  background: hsl(var(--primary) / 0.5);
+}
