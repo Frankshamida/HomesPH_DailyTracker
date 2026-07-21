@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import { CheckCircle2, Clock, ExternalLink, Link2, UtensilsCrossed } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -5,6 +6,48 @@ import ThemeToggle from "@/components/ui/theme-toggle";
 import { slotLabel } from "@/lib/attendance";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}): Promise<Metadata> {
+  const { token } = await params;
+  const supabase = await createClient();
+
+  const { data: link } = await supabase
+    .from("share_link")
+    .select("user_id, work_date")
+    .eq("token", token)
+    .maybeSingle();
+
+  if (!link) {
+    return { title: "Daily Task", description: "This share link is invalid or has been removed." };
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name, avatar_url")
+    .eq("id", link.user_id)
+    .maybeSingle();
+
+  const fullName = profile?.full_name?.trim() || "Team Member";
+  const title = "Homes.ph - Daily Task";
+  const description = `${fullName}'s daily task report for ${prettyDate(link.work_date)}.`;
+  const images = profile?.avatar_url ? [{ url: profile.avatar_url, width: 400, height: 400 }] : undefined;
+
+  return {
+    title,
+    description,
+    openGraph: { title, description, images, type: "profile" },
+    twitter: {
+      card: profile?.avatar_url ? "summary" : "summary_large_image",
+      title,
+      description,
+      images: profile?.avatar_url ? [profile.avatar_url] : undefined,
+    },
+  };
+}
 
 const TYPE_META: Record<string, { label: string; badge: string; dot: string }> = {
   development: { label: "Development", badge: "bg-indigo-100 text-indigo-700", dot: "bg-indigo-500" },
@@ -38,6 +81,7 @@ const TYPE_META: Record<string, { label: string; badge: string; dot: string }> =
   content_management: { label: "Content Management", badge: "bg-cyan-100 text-cyan-700", dot: "bg-cyan-500" },
   article_posting: { label: "Article Posting", badge: "bg-sky-100 text-sky-700", dot: "bg-sky-500" },
   blog_posting: { label: "Blog Posting", badge: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
+  listing_video_posting: { label: "Video Listing Posting", badge: "bg-red-100 text-red-700", dot: "bg-red-500" },
   image_editing: { label: "Image Editing", badge: "bg-pink-100 text-pink-700", dot: "bg-pink-500" },
   graphic_design: { label: "Graphic Design", badge: "bg-rose-100 text-rose-700", dot: "bg-rose-500" },
   branding: { label: "Branding", badge: "bg-fuchsia-100 text-fuchsia-700", dot: "bg-fuchsia-500" },
@@ -100,6 +144,13 @@ interface DailyTask {
   design_url: string | null;
 }
 
+interface Listing {
+  id: string;
+  task_id: string;
+  listing_title: string;
+  youtube_link: string;
+}
+
 interface Block {
   start: number;
   end: number;
@@ -129,7 +180,7 @@ function buildBlocks(tasks: DailyTask[]): Block[] {
   return blocks;
 }
 
-function TaskRow({ block }: { block: Block }) {
+function TaskRow({ block, listingsByTask }: { block: Block; listingsByTask: Record<string, Listing[]> }) {
   const t = block.task;
   const meta = t ? TYPE_META[t.type] ?? TYPE_META.development : null;
   return (
@@ -165,9 +216,21 @@ function TaskRow({ block }: { block: Block }) {
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 dark:text-brand-300 hover:underline break-all"
               >
-                <ExternalLink className="size-3.5" /> View design link
+                <ExternalLink className="size-3.5" />{" "}
+                {t.type === "auditing" || t.type === "qa" ? "View Google Sheet" : "View design link"}
               </a>
             )}
+            {(listingsByTask[t.id] ?? []).map((l) => (
+              <a
+                key={l.id}
+                href={l.youtube_link}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 dark:text-brand-300 hover:underline break-all"
+              >
+                <ExternalLink className="size-3.5" /> {l.listing_title}
+              </a>
+            ))}
           </div>
         </div>
       ) : (
@@ -221,6 +284,15 @@ export default async function SharePage({
   const avatar = profile?.avatar_url || null;
   const tasks = (tasksData as DailyTask[]) ?? [];
   const totalHours = tasks.reduce((s, t) => s + (t.end_hour - t.start_hour), 0);
+
+  const taskIds = tasks.map((t) => t.id);
+  const { data: listingsData } = taskIds.length
+    ? await supabase.from("daily_task_listing").select("*").in("task_id", taskIds).order("created_at")
+    : { data: [] as Listing[] };
+  const listingsByTask: Record<string, Listing[]> = {};
+  for (const l of (listingsData as Listing[]) ?? []) {
+    (listingsByTask[l.task_id] ??= []).push(l);
+  }
 
   const blocks = buildBlocks(tasks);
   const morning = blocks.filter((b) => b.start < 12);
@@ -277,7 +349,7 @@ export default async function SharePage({
 
           <div className="space-y-3 sm:space-y-4">
             {morning.map((b) => (
-              <TaskRow key={`${b.start}-${b.end}`} block={b} />
+              <TaskRow key={`${b.start}-${b.end}`} block={b} listingsByTask={listingsByTask} />
             ))}
 
             {/* Lunch break */}
@@ -293,7 +365,7 @@ export default async function SharePage({
             </div>
 
             {afternoon.map((b) => (
-              <TaskRow key={`${b.start}-${b.end}`} block={b} />
+              <TaskRow key={`${b.start}-${b.end}`} block={b} listingsByTask={listingsByTask} />
             ))}
           </div>
         </div>

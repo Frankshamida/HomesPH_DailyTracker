@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock, ExternalLink, MapPin, X } from "lucide-react";
+import { Clock, ExternalLink, FileSpreadsheet, MapPin, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import ThemeToggle from "@/components/ui/theme-toggle";
 import {
@@ -46,6 +46,7 @@ const TYPE_LABELS: Record<string, string> = {
   content_management: "Content Management",
   article_posting: "Article Posting",
   blog_posting: "Blog Posting",
+  listing_video_posting: "Video Listing Posting",
   image_editing: "Image Editing",
   graphic_design: "Graphic Design",
   branding: "Branding",
@@ -102,6 +103,36 @@ interface Excuse {
   excused_at: string;
   resumed_at: string | null;
 }
+interface Listing {
+  id: string;
+  task_id: string;
+  listing_title: string;
+  youtube_link: string;
+}
+
+function referenceLinkLabel(url: string) {
+  if (/docs\.google\.com\/spreadsheets/.test(url)) return "Open Google Sheet";
+  if (/docs\.google\.com\/document/.test(url)) return "Open Google Doc";
+  if (/figma\.com/.test(url)) return "Open Figma design";
+  return "Open reference link";
+}
+
+function youtubeEmbedUrl(link: string): string | null {
+  try {
+    const u = new URL(link);
+    let id = "";
+    if (u.hostname.includes("youtu.be")) {
+      id = u.pathname.slice(1);
+    } else if (u.hostname.includes("youtube.com")) {
+      if (u.pathname.startsWith("/embed/")) return link;
+      if (u.pathname.startsWith("/shorts/")) id = u.pathname.split("/")[2] ?? "";
+      else id = u.searchParams.get("v") ?? "";
+    }
+    return id ? `https://www.youtube.com/embed/${id}` : null;
+  } catch {
+    return null;
+  }
+}
 
 function initials(name: string) {
   const p = name.trim().split(/\s+/).filter(Boolean);
@@ -138,6 +169,7 @@ export default function LiveStatus({
   const [tasks, setTasks] = useState<DailyTask[]>([]);
   const [excuses, setExcuses] = useState<Excuse[]>([]);
   const [selected, setSelected] = useState<DailyTask | null>(null);
+  const [listings, setListings] = useState<Listing[]>([]);
 
   // live clock
   useEffect(() => {
@@ -174,6 +206,21 @@ export default function LiveStatus({
     const t = setInterval(load, 15000);
     return () => clearInterval(t);
   }, [load]);
+
+  // Listings are view-only here — they can only be added from the dashboard's
+  // "My Daily Task" sidebar, on the task itself, once it's created.
+  useEffect(() => {
+    if (!selected || selected.type !== "listing_video_posting") {
+      setListings([]);
+      return;
+    }
+    supabase
+      .from("daily_task_listing")
+      .select("*")
+      .eq("task_id", selected.id)
+      .order("created_at")
+      .then(({ data }) => setListings((data as Listing[]) ?? []));
+  }, [selected, supabase]);
 
   const baseDate = now ?? new Date();
   const sched = getSchedule(baseDate);
@@ -451,10 +498,72 @@ export default function LiveStatus({
                 href={selected.design_url}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 mt-4 text-sm font-medium text-brand-700 dark:text-brand-300 hover:underline break-all"
+                className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-brand-200 dark:border-brand-800/60 bg-gradient-to-r from-brand-50 to-brand-100/60 dark:from-brand-950/40 dark:to-brand-900/20 px-4 py-3 shadow-sm hover:shadow-md hover:border-brand-300 transition-all group"
               >
-                <ExternalLink className="size-4" /> View design link
+                <span className="flex items-center gap-3 min-w-0">
+                  <span className="flex items-center justify-center size-9 rounded-xl bg-brand-600 text-white shrink-0">
+                    <FileSpreadsheet className="size-5" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-foreground">
+                      {referenceLinkLabel(selected.design_url)}
+                    </span>
+                    <span className="block text-xs text-muted-foreground truncate max-w-[220px] sm:max-w-xs">
+                      {selected.design_url}
+                    </span>
+                  </span>
+                </span>
+                <ExternalLink className="size-4 text-brand-600 dark:text-brand-300 group-hover:translate-x-0.5 transition-transform shrink-0" />
               </a>
+            )}
+
+            {selected.type === "listing_video_posting" && (
+              <div className="mt-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2.5">
+                  🎬 Listings
+                </p>
+
+                {listings.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-center">
+                    <p className="text-sm text-muted-foreground">No listings added yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {listings.map((l) => {
+                      const embed = youtubeEmbedUrl(l.youtube_link);
+                      return (
+                        <div
+                          key={l.id}
+                          className="rounded-2xl border border-border shadow-sm overflow-hidden bg-card"
+                        >
+                          <a
+                            href={l.youtube_link}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center justify-between gap-2 px-4 py-3 hover:bg-muted/50 transition-colors group"
+                          >
+                            <span className="text-sm font-semibold text-foreground truncate">
+                              🏠 {l.listing_title}
+                            </span>
+                            <ExternalLink className="size-4 text-muted-foreground group-hover:text-brand-600 shrink-0" />
+                          </a>
+                          {embed && (
+                            <div className="aspect-video w-full bg-black">
+                              <iframe
+                                src={embed}
+                                title={l.listing_title}
+                                className="w-full h-full"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>

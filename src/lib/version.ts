@@ -19,10 +19,22 @@ export interface ChangelogEntry {
 }
 
 /** ⬆️ Bump this on every release. */
-export const APP_VERSION = "1.1.0";
+export const APP_VERSION = "1.2.0";
 
 /** Newest first. Add a new entry above the previous one on each release. */
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.2.0",
+    date: "2026-07-21",
+    features: [
+      "🎬 New \"Video Listing Posting\" task type — add one or more listing titles + YouTube links to a task after it's created, with an embedded video preview.",
+      "📊 \"Auditing\" now supports a reference link too, shown as \"View Google Sheet\" alongside Quality Assurance.",
+      "✨ Video Listing Posting tasks auto-fill a ready-made description.",
+      "🔗 Daily reports now automatically include your shareable link at the end.",
+      "🖼️ Sharing your link on Messenger/Facebook now shows a proper preview card — \"Homes.ph - Daily Task\" with your name, date, and photo.",
+      "💅 Nicer-looking reference links and listing previews on your public live-status page.",
+    ],
+  },
   {
     version: "1.1.0",
     date: "2026-07-21",

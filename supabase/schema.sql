@@ -124,6 +124,28 @@ create index if not exists daily_task_user_date_idx
   on public.daily_task (user_id, work_date, start_hour);
 
 -- --------------------------------------------------------------------------
+-- 3b-2) DAILY_TASK_LISTING  (one or more listing videos attached to a
+--     'listing_video_posting' daily_task, added AFTER the task is created)
+-- --------------------------------------------------------------------------
+create table if not exists public.daily_task_listing (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references public.daily_task (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  listing_title text not null,
+  youtube_link text not null,
+  created_at timestamptz default now()
+);
+
+alter table public.daily_task_listing enable row level security;
+
+drop policy if exists "daily_task_listing_all_own" on public.daily_task_listing;
+create policy "daily_task_listing_all_own" on public.daily_task_listing
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create index if not exists daily_task_listing_task_idx
+  on public.daily_task_listing (task_id);
+
+-- --------------------------------------------------------------------------
 -- 3c) SHARE_LINK  (public read-only link for a user's day)
 --     A token maps to (user_id, work_date). Anyone with the token can view
 --     that day's tasks + the owner's name/photo.
@@ -155,6 +177,17 @@ create policy "daily_task_public_shared" on public.daily_task
     exists (
       select 1 from public.share_link s
       where s.user_id = daily_task.user_id and s.work_date = daily_task.work_date
+    )
+  );
+
+-- Public may read daily_task_listing rows ONLY for tasks on a shared day
+drop policy if exists "daily_task_listing_public_shared" on public.daily_task_listing;
+create policy "daily_task_listing_public_shared" on public.daily_task_listing
+  for select using (
+    exists (
+      select 1 from public.daily_task dt
+      join public.share_link s on s.user_id = dt.user_id and s.work_date = dt.work_date
+      where dt.id = daily_task_listing.task_id
     )
   );
 

@@ -48,6 +48,7 @@ type TaskType =
   | "content_management"
   | "article_posting"
   | "blog_posting"
+  | "listing_video_posting"
   | "image_editing"
   | "graphic_design"
   | "branding"
@@ -86,13 +87,23 @@ interface DailyTask {
   carried_over_from?: string | null;
 }
 
+interface Listing {
+  id: string;
+  task_id: string;
+  listing_title: string;
+  youtube_link: string;
+}
+
 interface PastDay {
   date: string;
   tasks: DailyTask[];
   totalHours: number;
 }
 
-const TYPE_META: Record<TaskType, { label: string; needsUrl: boolean; badge: string }> = {
+const TYPE_META: Record<
+  TaskType,
+  { label: string; needsUrl: boolean; needsListingFields?: boolean; badge: string }
+> = {
   development: { label: "Development", needsUrl: false, badge: "bg-indigo-100 text-indigo-700" },
   bug_fixing: { label: "Bug Fixing", needsUrl: false, badge: "bg-red-100 text-red-700" },
   ui_designing: { label: "UI Designing", needsUrl: true, badge: "bg-pink-100 text-pink-700" },
@@ -117,13 +128,19 @@ const TYPE_META: Record<TaskType, { label: string; needsUrl: boolean; badge: str
   research_development: { label: "Research & Development (R&D)", needsUrl: false, badge: "bg-purple-100 text-purple-700" },
   documentation: { label: "Documentation", needsUrl: true, badge: "bg-stone-100 text-stone-700" },
   technical_writing: { label: "Technical Writing", needsUrl: true, badge: "bg-neutral-100 text-neutral-700" },
-  auditing: { label: "Auditing", needsUrl: false, badge: "bg-zinc-100 text-zinc-700" },
+  auditing: { label: "Auditing", needsUrl: true, badge: "bg-zinc-100 text-zinc-700" },
   website_audit: { label: "Website Audit", needsUrl: true, badge: "bg-orange-100 text-orange-700" },
   seo_optimization: { label: "SEO Optimization", needsUrl: true, badge: "bg-green-100 text-green-700" },
   accessibility: { label: "Accessibility (A11y)", needsUrl: true, badge: "bg-teal-100 text-teal-700" },
   content_management: { label: "Content Management", needsUrl: true, badge: "bg-cyan-100 text-cyan-700" },
   article_posting: { label: "Article Posting", needsUrl: true, badge: "bg-sky-100 text-sky-700" },
   blog_posting: { label: "Blog Posting", needsUrl: true, badge: "bg-blue-100 text-blue-700" },
+  listing_video_posting: {
+    label: "Video Listing Posting",
+    needsUrl: false,
+    needsListingFields: true,
+    badge: "bg-red-100 text-red-700",
+  },
   image_editing: { label: "Image Editing", needsUrl: true, badge: "bg-pink-100 text-pink-700" },
   graphic_design: { label: "Graphic Design", needsUrl: true, badge: "bg-rose-100 text-rose-700" },
   branding: { label: "Branding", needsUrl: true, badge: "bg-fuchsia-100 text-fuchsia-700" },
@@ -171,6 +188,16 @@ function typeLabel(t: string) {
   return TYPE_META[t as TaskType]?.label ?? t;
 }
 
+function linkChipLabel(t: string) {
+  return t === "auditing" || t === "qa" ? "📊 Google Sheet" : "🔗 design";
+}
+
+// Auto-filled into the description field when a type is picked and the field is still empty.
+const DEFAULT_DESCRIPTIONS: Partial<Record<TaskType, string>> = {
+  listing_video_posting:
+    "Generate a video listing for a Homes.ph property and post it on YouTube, showcasing its features and amenities in an engaging way to attract potential buyers.",
+};
+
 interface Block {
   start: number;
   end: number;
@@ -201,6 +228,13 @@ export default function DailyTaskClient({ userId }: { userId: string }) {
   const [past, setPast] = useState<PastDay[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [reportDate, setReportDate] = useState<string | null>(null); // which day the report is for
+
+  // listings (added to a "Video Listing Posting" task after it's created — many per task)
+  const [listingsByTask, setListingsByTask] = useState<Record<string, Listing[]>>({});
+  const [addListingFor, setAddListingFor] = useState<string | null>(null);
+  const [newListingTitle, setNewListingTitle] = useState("");
+  const [newYoutubeLink, setNewYoutubeLink] = useState("");
+  const [listingSaving, setListingSaving] = useState(false);
 
   // form / modal
   const [open, setOpen] = useState(false);
@@ -281,6 +315,135 @@ export default function DailyTaskClient({ userId }: { userId: string }) {
     setTasks((data as DailyTask[]) ?? []);
   }, [supabase, userId]);
 
+  const ensureListingsLoaded = useCallback(
+    async (taskIds: string[]) => {
+      const missing = taskIds.filter((id) => !(id in listingsByTask));
+      if (!missing.length) return;
+      const { data } = await supabase
+        .from("daily_task_listing")
+        .select("*")
+        .in("task_id", missing)
+        .order("created_at");
+      setListingsByTask((prev) => {
+        const next = { ...prev };
+        for (const id of missing) next[id] = [];
+        for (const row of (data as Listing[]) ?? []) {
+          next[row.task_id] = [...(next[row.task_id] ?? []), row];
+        }
+        return next;
+      });
+    },
+    [listingsByTask, supabase]
+  );
+
+  async function addListing(taskId: string) {
+    if (!newListingTitle.trim() || !newYoutubeLink.trim()) return;
+    setListingSaving(true);
+    const { data, error } = await supabase
+      .from("daily_task_listing")
+      .insert({
+        task_id: taskId,
+        user_id: userId,
+        listing_title: newListingTitle.trim(),
+        youtube_link: newYoutubeLink.trim(),
+      })
+      .select()
+      .single();
+    setListingSaving(false);
+    if (error || !data) return;
+    setListingsByTask((prev) => ({ ...prev, [taskId]: [...(prev[taskId] ?? []), data as Listing] }));
+    setNewListingTitle("");
+    setNewYoutubeLink("");
+    setAddListingFor(null);
+  }
+
+  async function removeListing(taskId: string, listingId: string) {
+    await supabase.from("daily_task_listing").delete().eq("id", listingId);
+    setListingsByTask((prev) => ({
+      ...prev,
+      [taskId]: (prev[taskId] ?? []).filter((l) => l.id !== listingId),
+    }));
+  }
+
+  function renderListings(taskId: string) {
+    const listings = listingsByTask[taskId] ?? [];
+    return (
+      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        {listings.map((l) => (
+          <span
+            key={l.id}
+            className="inline-flex items-center gap-1 text-xs bg-red-50 border border-red-200 text-red-700 rounded-full pl-2 pr-1 py-0.5"
+          >
+            <a href={l.youtube_link} target="_blank" rel="noreferrer" className="underline truncate max-w-[160px]">
+              ▶️ {l.listing_title}
+            </a>
+            <button
+              type="button"
+              onClick={() => removeListing(taskId, l.id)}
+              className="text-red-400 hover:text-red-700 px-1"
+              aria-label="Remove listing"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        {addListingFor === taskId ? (
+          <div className="flex flex-wrap items-center gap-1.5 bg-muted/50 border border-border rounded-lg px-2 py-1.5">
+            <input
+              autoFocus
+              value={newListingTitle}
+              onChange={(e) => setNewListingTitle(e.target.value)}
+              placeholder="Listing title"
+              className="rounded-md border border-input px-2 py-1 text-xs w-36"
+            />
+            <input
+              value={newYoutubeLink}
+              onChange={(e) => setNewYoutubeLink(e.target.value)}
+              placeholder="Youtube link"
+              className="rounded-md border border-input px-2 py-1 text-xs w-44"
+            />
+            <button
+              type="button"
+              disabled={listingSaving || !newListingTitle.trim() || !newYoutubeLink.trim()}
+              onClick={() => addListing(taskId)}
+              className="text-xs font-semibold text-white bg-brand-600 rounded-md px-2 py-1 disabled:opacity-50"
+            >
+              {listingSaving ? "…" : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAddListingFor(null);
+                setNewListingTitle("");
+                setNewYoutubeLink("");
+              }}
+              className="text-xs text-muted-foreground px-1"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setAddListingFor(taskId);
+              setNewListingTitle("");
+              setNewYoutubeLink("");
+            }}
+            className="text-xs font-semibold text-brand-700 hover:text-brand-800 border border-brand-200 bg-brand-50 rounded-full px-2 py-0.5"
+          >
+            + Add listing
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  useEffect(() => {
+    const ids = tasks.filter((t) => TYPE_META[t.type]?.needsListingFields).map((t) => t.id);
+    if (ids.length) ensureListingsLoaded(ids);
+  }, [tasks, ensureListingsLoaded]);
+
   const loadPast = useCallback(async () => {
     // Past = archived tasks, grouped by date (most recent first)
     const { data } = await supabase
@@ -327,45 +490,65 @@ export default function DailyTaskClient({ userId }: { userId: string }) {
     setCarryOptions(list);
   }, [supabase, userId]);
 
-  const generateReport = useCallback(async (dateKey?: string) => {
-    const key = dateKey ?? manilaDateKey(new Date());
-    setReportDate(key);
-    setReportLoading(true);
-    setCopied(false);
-    const { data } = await supabase
-      .from("daily_task")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("work_date", key)
-      .order("start_hour");
-    const list = (data as DailyTask[]) ?? [];
-    const totalHours = list.reduce((sum, t) => sum + (t.end_hour - t.start_hour), 0);
-    try {
-      const res = await fetch("/api/quote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: "report",
-          totalHours,
-          tasks: list.map((t) => ({
-            title: t.title,
-            description: t.description ?? "",
-            type: t.type,
-            status: t.status,
-            start: t.start_hour,
-            end: t.end_hour,
-            carriedOverFrom: t.carried_over_from ?? null,
-          })),
-        }),
-      });
-      const json = await res.json();
-      setReport(json.report as string);
-    } catch {
-      setReport("Sorry, the report could not be generated. Please try again.");
-    } finally {
+  // Creates (or reuses) the public share link for a day and returns its full URL.
+  const ensureShareLink = useCallback(
+    async (dateKey: string) => {
+      const { data, error } = await supabase
+        .from("share_link")
+        .upsert({ user_id: userId, work_date: dateKey }, { onConflict: "user_id,work_date" })
+        .select("token")
+        .maybeSingle();
+      if (error || !data) return null;
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      return `${origin}/share/${data.token}`;
+    },
+    [supabase, userId]
+  );
+
+  const generateReport = useCallback(
+    async (dateKey?: string) => {
+      const key = dateKey ?? manilaDateKey(new Date());
+      setReportDate(key);
+      setReportLoading(true);
+      setCopied(false);
+      const { data } = await supabase
+        .from("daily_task")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("work_date", key)
+        .order("start_hour");
+      const list = (data as DailyTask[]) ?? [];
+      const totalHours = list.reduce((sum, t) => sum + (t.end_hour - t.start_hour), 0);
+      let reportText: string;
+      try {
+        const res = await fetch("/api/quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "report",
+            totalHours,
+            tasks: list.map((t) => ({
+              title: t.title,
+              description: t.description ?? "",
+              type: t.type,
+              status: t.status,
+              start: t.start_hour,
+              end: t.end_hour,
+              carriedOverFrom: t.carried_over_from ?? null,
+            })),
+          }),
+        });
+        const json = await res.json();
+        reportText = json.report as string;
+      } catch {
+        reportText = "Sorry, the report could not be generated. Please try again.";
+      }
+      const shareLink = await ensureShareLink(key);
+      setReport(shareLink ? `${reportText}\n\n📎 View my full daily tracker: ${shareLink}` : reportText);
       setReportLoading(false);
-    }
-  }, [supabase, userId]);
+    },
+    [supabase, userId, ensureShareLink]
+  );
 
   async function generateLink(dateKey?: string) {
     setShareLoading(true);
@@ -373,19 +556,14 @@ export default function DailyTaskClient({ userId }: { userId: string }) {
     setShareUrl(null);
     setShareOpen(true);
     const key = dateKey ?? manilaDateKey(new Date());
-    const { data, error } = await supabase
-      .from("share_link")
-      .upsert({ user_id: userId, work_date: key }, { onConflict: "user_id,work_date" })
-      .select("token")
-      .maybeSingle();
+    const url = await ensureShareLink(key);
     setShareLoading(false);
-    if (error || !data) {
-      flash(error?.message ?? "Could not create link.");
+    if (!url) {
+      flash("Could not create link.");
       setShareOpen(false);
       return;
     }
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    setShareUrl(`${origin}/share/${data.token}`);
+    setShareUrl(url);
   }
 
   useEffect(() => {
@@ -769,13 +947,14 @@ export default function DailyTaskClient({ userId }: { userId: string }) {
                             rel="noreferrer"
                             className="text-xs text-brand-700 underline truncate max-w-[180px]"
                           >
-                            🔗 design
+                            {linkChipLabel(b.task.type)}
                           </a>
                         )}
                       </div>
                       {b.task.description && (
                         <p className="text-xs text-muted-foreground mt-1 whitespace-pre-line">{b.task.description}</p>
                       )}
+                      {TYPE_META[b.task.type]?.needsListingFields && renderListings(b.task.id)}
                     </div>
                   ) : (
                     <div className="flex-1">
@@ -849,7 +1028,16 @@ export default function DailyTaskClient({ userId }: { userId: string }) {
                       <td className="px-6 py-3">
                         <div className="flex gap-2 justify-end flex-wrap">
                           <button
-                            onClick={() => setExpanded(expanded === d.date ? null : d.date)}
+                            onClick={() => {
+                              const next = expanded === d.date ? null : d.date;
+                              setExpanded(next);
+                              if (next) {
+                                const ids = d.tasks
+                                  .filter((t) => TYPE_META[t.type]?.needsListingFields)
+                                  .map((t) => t.id);
+                                if (ids.length) ensureListingsLoaded(ids);
+                              }
+                            }}
                             className="text-xs font-medium text-muted-foreground hover:text-brand-700 border border-border rounded-lg px-2.5 py-1"
                           >
                             {expanded === d.date ? "Hide" : "View"}
@@ -895,7 +1083,7 @@ export default function DailyTaskClient({ userId }: { userId: string }) {
                                         rel="noreferrer"
                                         className="text-xs text-brand-700 underline"
                                       >
-                                        🔗 design
+                                        {linkChipLabel(t.type)}
                                       </a>
                                     )}
                                   </div>
@@ -903,6 +1091,9 @@ export default function DailyTaskClient({ userId }: { userId: string }) {
                                     <p className="text-xs text-muted-foreground mt-0.5 ml-[10.75rem] whitespace-pre-line">
                                       {t.description}
                                     </p>
+                                  )}
+                                  {TYPE_META[t.type]?.needsListingFields && (
+                                    <div className="ml-[10.75rem] mt-1">{renderListings(t.id)}</div>
                                   )}
                                 </li>
                               );
@@ -1071,6 +1262,9 @@ export default function DailyTaskClient({ userId }: { userId: string }) {
                                   onClick={() => {
                                     setType(t);
                                     setTypeOpen(false);
+                                    if (!description.trim() && DEFAULT_DESCRIPTIONS[t]) {
+                                      setDescription(DEFAULT_DESCRIPTIONS[t]!);
+                                    }
                                   }}
                                   className={`w-full text-left px-3 py-1.5 text-sm hover:bg-brand-50 ${
                                     t === type ? "bg-brand-50 font-semibold text-brand-700" : "text-foreground"
@@ -1170,18 +1364,24 @@ export default function DailyTaskClient({ userId }: { userId: string }) {
               {TYPE_META[type].needsUrl && (
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1">
-                    Design URL <span className="text-red-500">*</span>
+                    Reference Link <span className="text-red-500">*</span>
                   </label>
                   <input
                     value={designUrl}
                     onChange={(e) => setDesignUrl(e.target.value)}
-                    placeholder="https://figma.com/… or the design link"
+                    placeholder="https://figma.com/… or a Google Sheets / doc link"
                     className="w-full rounded-lg border border-input px-3 py-2 focus:ring-2 focus:ring-brand-500 outline-none"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
                     Required for {TYPE_META[type].label}.
                   </p>
                 </div>
+              )}
+
+              {TYPE_META[type].needsListingFields && (
+                <p className="text-xs text-muted-foreground bg-muted/50 border border-border rounded-lg px-3 py-2">
+                  You can add one or more listing titles + Youtube links to this task after it&apos;s created.
+                </p>
               )}
 
               {formErr && (
