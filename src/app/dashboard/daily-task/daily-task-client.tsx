@@ -6,6 +6,7 @@ import { Bell, CalendarDays, FileText, Link2, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { PageContainer, PageHeader } from "@/components/layout/page";
+import FloatingTasks from "./floating-tasks";
 import {
   formatManilaTime,
   getWorkSlots,
@@ -164,6 +165,10 @@ const STATUS_OPTIONS: TaskStatus[] = [
 
 function statusMeta(s: string) {
   return STATUS_META[s as TaskStatus] ?? { label: s, badge: "bg-muted text-muted-foreground" };
+}
+
+function typeLabel(t: string) {
+  return TYPE_META[t as TaskType]?.label ?? t;
 }
 
 interface Block {
@@ -389,6 +394,12 @@ export default function DailyTaskClient({ userId }: { userId: string }) {
     loadCarry();
   }, [load, loadPast, loadCarry]);
 
+  // keep today's tasks fresh so the floating widget stays live
+  useEffect(() => {
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
+  }, [load]);
+
   // Auto-generate when arriving from the Time-out "Create Report" button
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -602,6 +613,20 @@ export default function DailyTaskClient({ userId }: { userId: string }) {
               <Button variant="outline" size="sm" onClick={enableNotifications}>
                 <Bell /> Enable reminders
               </Button>
+            )}
+            {sched.dayType !== "sunday" && (
+              <FloatingTasks
+                tasks={tasks}
+                now={now}
+                currentHour={currentHour}
+                typeLabel={typeLabel}
+                statusMeta={statusMeta}
+                onNotSupported={() =>
+                  flash(
+                    "Floating window needs Chrome or Edge on desktop (or this app installed). Try opening it there."
+                  )
+                }
+              />
             )}
             <Button
               variant="outline"

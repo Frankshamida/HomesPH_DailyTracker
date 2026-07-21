@@ -8,8 +8,10 @@ import {
   CalendarCheck,
   ClipboardList,
   LayoutDashboard,
+  Loader2,
   LogOut,
   Menu,
+  Settings,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -30,6 +32,7 @@ const nav: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/daily-task", label: "My Daily Task", icon: CalendarCheck },
   { href: "/dashboard/attendance-log", label: "Attendance Log", icon: ClipboardList },
+  { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
 export default function Shell({ userId, email, fullName, children }: Props) {
@@ -40,6 +43,14 @@ export default function Shell({ userId, email, fullName, children }: Props) {
   const [name, setName] = useState(fullName);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // href the user just clicked — used to highlight instantly, before the
+  // server render finishes (that's what removes the "dead click" delay).
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+
+  // clear the optimistic highlight once the route actually changes
+  useEffect(() => {
+    setPendingHref(null);
+  }, [pathname]);
 
   useEffect(() => {
     supabase
@@ -89,16 +100,24 @@ export default function Shell({ userId, email, fullName, children }: Props) {
 
       <nav className="flex-1 space-y-1 px-3 py-4">
         {nav.map((item) => {
+          // highlight against the pending click first, so the target lights up
+          // the instant it's tapped rather than when the page finishes loading
+          const current = pendingHref ?? pathname;
           const active =
             item.href === "/dashboard"
-              ? pathname === "/dashboard"
-              : pathname.startsWith(item.href);
+              ? current === "/dashboard"
+              : current.startsWith(item.href);
+          const loading = pendingHref === item.href && pathname !== item.href;
           const Icon = item.icon;
           return (
             <Link
               key={item.href}
               href={item.href}
-              onClick={() => setMobileOpen(false)}
+              prefetch
+              onClick={() => {
+                setMobileOpen(false);
+                if (item.href !== pathname) setPendingHref(item.href);
+              }}
               aria-current={active ? "page" : undefined}
               className={cn(
                 "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
@@ -111,7 +130,8 @@ export default function Shell({ userId, email, fullName, children }: Props) {
                 <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-accent" />
               )}
               <Icon className="size-5" />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {loading && <Loader2 className="size-4 animate-spin opacity-70" />}
             </Link>
           );
         })}

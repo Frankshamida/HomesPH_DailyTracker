@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import InstallPrompt from "@/components/pwa/install-prompt";
+import UpdatePrompt from "@/components/pwa/update-prompt";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -49,6 +50,7 @@ export default function RootLayout({
       <body>
         {children}
         <InstallPrompt />
+        <UpdatePrompt />
       </body>
     </html>
   );

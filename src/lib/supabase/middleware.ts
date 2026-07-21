@@ -30,10 +30,13 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  const isAuthPage = path === "/login" || path === "/";
-  const isPublic = path.startsWith("/share");
 
-  if (!user && !isAuthPage && !isPublic) {
+  // Only the dashboard requires a login. Everything else — the home/login
+  // pages, /share/<token>, and the public live-status page at /<fullname>
+  // (e.g. /frankdweezelgomez) — is publicly accessible without a session.
+  const isProtected = path.startsWith("/dashboard");
+
+  if (!user && isProtected) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
